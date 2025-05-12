@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NYC Citi Bike Station Analysis</title>
+  
+  <!-- Include Leaflet.js CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      text-align: center;
+    }
+    #map {
+      height: 600px;
+      width: 100%;
+    }
+    .info {
+      margin: 20px;
+    }
+    .link-container {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>NYC Citi Bike Station Analysis</h1>
+  <div class="info">
+    <p>Total Stations: <span id="stationCount"></span></p>
+  </div>
+  <div id="map"></div>
+
+  <!-- Link Under the Map -->
+  <div class="link-container">
+    <a href="https://www.citibikenyc.com/map" target="_blank">Click here to view the full Citi Bike map</a>
+  </div>
+
+  <script>
+    // Haversine distance function
+    function getDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371;  // Radius of the Earth in km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;  // Return distance in km
+    }
+
+    const avgSpeed = 15;  // Average speed in km/h
+    const chargePerKm = 0.5;  // Charge per kilometer in $
+
+    // Static stations data (for distance calculations)
+    const stations = [
+      { name: "Central Park North", lat: 40.7999, lon: -73.9550, bikes: 9 },
+      { name: "Times Square", lat: 40.7580, lon: -73.9855, bikes: 11 },
+      { name: "Grand Central Terminal", lat: 40.7527, lon: -73.9772, bikes: 8 },
+      { name: "Union Square", lat: 40.7359, lon: -73.9911, bikes: 14 },
+      { name: "Washington Square Park", lat: 40.7308, lon: -73.9973, bikes: 7 },
+      { name: "Wall Street", lat: 40.7066, lon: -74.0090, bikes: 12 },
+      { name: "Brooklyn Bridge", lat: 40.7061, lon: -73.9969, bikes: 6 },
+      { name: "Columbus Circle", lat: 40.7681, lon: -73.9819, bikes: 10 },
+      { name: "Battery Park", lat: 40.7033, lon: -74.0170, bikes: 5 },
+      { name: "High Line Park", lat: 40.7479, lon: -74.0049, bikes: 9 },
+      { name: "Chinatown", lat: 40.7158, lon: -73.9970, bikes: 8 },
+      { name: "East Village", lat: 40.7265, lon: -73.9815, bikes: 10 },
+      { name: "SoHo", lat: 40.7233, lon: -74.0020, bikes: 7 },
+      { name: "Harlem 125th", lat: 40.8075, lon: -73.9457, bikes: 13 },
+      { name: "Lower East Side", lat: 40.7179, lon: -73.9859, bikes: 6 }
+    ];
+
+    // Display the total number of stations
+    document.getElementById("stationCount").textContent = stations.length;
+
+    // Initialize the map and center it around NYC
+    const map = L.map('map').setView([40.75, -73.98], 13);
+
+    // Add OpenStreetMap tiles to the map
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Fetch real-time station data from Citi Bike API
+    fetch('https://gbfs.citibikenyc.com/gbfs/en/station_status.json')
+      .then(response => response.json())
+      .then(data => {
+        // Extract station status data
+        const apiStations = data.data.stations;
+
+        // Process each station data and add markers to the map
+        apiStations.forEach(station => {
+          const { name, lat, lon, bikes_available, docks_available } = station;
+
+          // Create a popup for each station
+          const popup = `
+            <strong>${name}</strong><br>
+            🚲 Bikes Available: ${bikes_available}<br>
+            🅳 Docks Available: ${docks_available}<br>
+            📍 Coordinates: (${lat}, ${lon})
+          `;
+
+          // Add marker for each station
+          L.marker([lat, lon])
+            .addTo(map)
+            .bindPopup(popup);
+        });
+      })
+      .catch(error => console.error('Error fetching station data:', error));
+
+    // Add distance calculations and routes for static stations
+    stations.forEach((station, index) => {
+      const next = stations[(index + 1) % stations.length];
+      const distance = getDistance(station.lat, station.lon, next.lat, next.lon).toFixed(2);
+      const travelTime = ((distance / avgSpeed) * 60).toFixed(0);  // Travel time in minutes
+      const cost = (distance * chargePerKm).toFixed(2);  // Estimated charge
+
+      const popup = `
+        <strong>${station.name}</strong><br>
+        🚲 Bikes Available: ${station.bikes}<br>
+        📍 Next: ${next.name}<br>
+        📏 Distance: ${distance} km<br>
+        ⏱️ Est. Time: ${travelTime} mins<br>
+        💵 Est. Charge: $${cost}<br>
+        🚴 Avg Speed: ${avgSpeed} km/h
+      `;
+
+      // Add marker with popup for each static station
+      L.marker([station.lat, station.lon])
+        .addTo(map)
+        .bindPopup(popup);
+    });
+
+    // Connect all stations with a polyline
+    const routeCoords = stations.map(s => [s.lat, s.lon]);
+    L.polyline(routeCoords, { color: 'blue' }).addTo(map);
+
+  </script>
+
+</body>
+</html>
